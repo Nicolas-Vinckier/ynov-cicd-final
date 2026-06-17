@@ -1,21 +1,30 @@
 const app = require('./app');
 const { initDb } = require('./db');
 
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT || 5000);
+const MAX_DB_RETRIES = Number(process.env.DB_CONNECT_RETRIES || 10);
+const DB_RETRY_DELAY_MS = Number(process.env.DB_CONNECT_RETRY_DELAY_MS || 3000);
+
+const sleep = (delayInMs) => new Promise((resolve) => setTimeout(resolve, delayInMs));
 
 const start = async () => {
   try {
-    let retries = 5;
-    while (retries) {
+    let remainingRetries = MAX_DB_RETRIES;
+
+    while (remainingRetries > 0) {
       try {
         await initDb();
         console.log('Database initialized successfully.');
         break;
       } catch (err) {
-        console.log(`Failed to connect to database. Retrying in 3 seconds... (${retries} retries left)`);
-        retries -= 1;
-        if (retries === 0) throw err;
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        remainingRetries -= 1;
+
+        if (remainingRetries === 0) {
+          throw err;
+        }
+
+        console.log(`Database unavailable. Retrying in ${DB_RETRY_DELAY_MS} ms... (${remainingRetries} retries left)`);
+        await sleep(DB_RETRY_DELAY_MS);
       }
     }
 

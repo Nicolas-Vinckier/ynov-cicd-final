@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import './App.css';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
@@ -10,43 +10,52 @@ function App() {
   const [error, setError] = useState(null);
   const [submitError, setSubmitError] = useState(null);
 
-  const fetchMetrics = async () => {
+  const fetchMetrics = useCallback(async () => {
+    setLoading(true);
+
     try {
-      setLoading(true);
       const res = await fetch(`${API_URL}/metrics`);
-      if (!res.ok) throw new Error('Erreur lors de la récupération des métriques');
+
+      if (!res.ok) {
+        throw new Error('Erreur lors de la récupération des métriques');
+      }
+
       const data = await res.json();
-      setMetrics(data);
+      setMetrics(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchMetrics();
-  }, []);
+  }, [fetchMetrics]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!value || isNaN(Number(value))) {
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    const parsedValue = Number(value);
+    if (value.trim() === '' || !Number.isFinite(parsedValue)) {
       setSubmitError('Veuillez entrer une valeur numérique valide');
       return;
     }
 
     try {
       setSubmitError(null);
-      const timestamp = new Date().toLocaleString('fr-FR');
+      const timestamp = new Date().toISOString();
       const res = await fetch(`${API_URL}/metrics`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: Number(value), timestamp }),
+        body: JSON.stringify({ value: parsedValue, timestamp }),
       });
 
-      if (!res.ok) throw new Error("Erreur lors de l'enregistrement de la métrique");
-      
+      if (!res.ok) {
+        throw new Error("Erreur lors de l'enregistrement de la métrique");
+      }
+
       const newMetric = await res.json();
       setMetrics((prev) => [newMetric, ...prev]);
       setValue('');
@@ -56,9 +65,9 @@ function App() {
   };
 
   const totalCount = metrics.length;
-  const averageValue = totalCount > 0 
-    ? (metrics.reduce((acc, m) => acc + Number(m.value), 0) / totalCount).toFixed(2)
-    : 0;
+  const averageValue = totalCount > 0
+    ? (metrics.reduce((acc, metric) => acc + Number(metric.value), 0) / totalCount).toFixed(2)
+    : '0.00';
   const lastValue = totalCount > 0 ? metrics[0].value : '-';
 
   return (
@@ -70,7 +79,7 @@ function App() {
 
       <main className="dashboard-grid">
         <div className="left-panel">
-          <section className="stats-container">
+          <section className="stats-container" aria-label="Statistiques des métriques">
             <div className="stat-card">
               <span className="stat-label">Total Métriques</span>
               <span className="stat-value">{totalCount}</span>
@@ -89,17 +98,19 @@ function App() {
             <h2>Ajouter une Métrique</h2>
             <form onSubmit={handleSubmit}>
               <div className="input-group">
+                <label className="visually-hidden" htmlFor="metric-value">Valeur de la métrique</label>
                 <input
+                  id="metric-value"
                   type="number"
                   step="any"
                   placeholder="Valeur (ex: 23.5)"
                   value={value}
-                  onChange={(e) => setValue(e.target.value)}
+                  onChange={(event) => setValue(event.target.value)}
                   className="metric-input"
                 />
                 <button type="submit" className="btn-submit">Envoyer</button>
               </div>
-              {submitError && <p className="error-message">{submitError}</p>}
+              {submitError && <p className="error-message" role="alert">{submitError}</p>}
             </form>
           </section>
         </div>
@@ -110,17 +121,17 @@ function App() {
             {loading ? (
               <p className="status-text">Chargement des métriques...</p>
             ) : error ? (
-              <p className="error-message">Erreur: {error}</p>
+              <p className="error-message" role="alert">Erreur: {error}</p>
             ) : metrics.length === 0 ? (
               <p className="status-text italic">Aucune métrique enregistrée pour le moment.</p>
             ) : (
-              <div className="metrics-list">
+              <div className="metrics-list" aria-label="Liste des métriques enregistrées">
                 {metrics.map((metric) => (
                   <div key={metric.id} className="metric-item">
                     <div className="metric-badge">
                       <span className="metric-num">{metric.value}</span>
                     </div>
-                    <span className="metric-date">{metric.timestamp}</span>
+                    <time className="metric-date" dateTime={metric.timestamp}>{metric.timestamp}</time>
                   </div>
                 ))}
               </div>

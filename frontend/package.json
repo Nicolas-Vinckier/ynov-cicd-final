@@ -16,12 +16,26 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test --watchAll=false --env=jsdom",
+    "test:coverage": "react-scripts test --watchAll=false --env=jsdom --coverage --coverageReporters=text --coverageReporters=lcov",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": [
       "react-app"
     ]
+  },
+  "jest": {
+    "collectCoverageFrom": [
+      "src/App.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 70,
+        "functions": 70,
+        "lines": 70,
+        "statements": 70
+      }
+    }
   },
   "browserslist": {
     "production": [

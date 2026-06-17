@@ -1,0 +1,238 @@
+name: CI/CD Metrics App
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  pull-requests: read
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository }}/metrics-api
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/metrics-ui
+
+jobs:
+  quality-gate:
+    name: Stage 1 - Quality gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Commit convention gate: examples are feat(api): add health endpoint or fix(ci): repair docker build.
+      - name: Validate commit messages on pull requests
+        if: github.event_name == 'pull_request'
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: commitlint.config.cjs
+
+      # Secret scanning is part of the security gate. A finding blocks the pipeline.
+      - name: Scan repository for exposed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Backend syntax check and critical dependency audit
+        working-directory: backend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          npm audit --audit-level=critical
+
+      - name: Frontend critical dependency audit
+        working-directory: frontend
+        run: |
+          npm install --no-audit --no-fund --ignore-scripts
+          npm audit --audit-level=critical
+
+  test-and-coverage:
+    name: Stage 2 - Automated tests and coverage
+    runs-on: ubuntu-latest
+    needs: quality-gate
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Backend unit tests with coverage gate
+        working-directory: backend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run test:coverage
+
+      - name: Frontend unit tests with coverage gate
+        working-directory: frontend
+        env:
+          CI: true
+        run: |
+          npm install --no-audit --no-fund --ignore-scripts
+          npm run test:coverage
+
+      - name: Frontend production build
+        working-directory: frontend
+        env:
+          GENERATE_SOURCEMAP: false
+        run: npm run build
+
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage
+
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+
+  container-build-and-scan:
+    name: Stage 3 - Docker build and image scan
+    runs-on: ubuntu-latest
+    needs: test-and-coverage
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image locally
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          load: true
+          tags: metrics-api:test
+
+      - name: Build frontend image locally
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          load: true
+          tags: metrics-ui:test
+
+      # The scan fails only on critical vulnerabilities to keep the gate realistic for an academic POC.
+      - name: Scan backend image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: metrics-api:test
+          format: table
+          exit-code: '1'
+          severity: CRITICAL
+
+      - name: Scan frontend image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: metrics-ui:test
+          format: table
+          exit-code: '1'
+          severity: CRITICAL
+
+  publish-and-deploy:
+    name: Stage 4 - Publish images and deploy
+    runs-on: ubuntu-latest
+    needs: container-build-and-scan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ env.BACKEND_IMAGE }}:latest
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+            ${{ env.FRONTEND_IMAGE }}:latest
+
+      - name: Copy deployment files to VPS
+        if: env.VPS_HOST != '' && env.VPS_USER != '' && env.VPS_SSH_KEY != ''
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "deploy/docker-compose.prod.yml,scripts/deploy-vps.sh"
+          target: "/opt/metrics-app"
+          strip_components: 1
+
+      - name: Deploy on VPS with Docker Compose
+        if: env.VPS_HOST != '' && env.VPS_USER != '' && env.VPS_SSH_KEY != ''
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -eu
+            mkdir -p /opt/metrics-app
+            cat > /opt/metrics-app/.env <<ENV_EOF
+            POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+            CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
+            FRONTEND_PORT=${{ secrets.FRONTEND_PORT }}
+            BACKEND_IMAGE=${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+            FRONTEND_IMAGE=${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+            ENV_EOF
+            chmod 600 /opt/metrics-app/.env
+            cd /opt/metrics-app
+            sh ./deploy-vps.sh
+
+      - name: Deployment configuration reminder
+        if: env.VPS_HOST == '' || env.VPS_USER == '' || env.VPS_SSH_KEY == ''
+        run: |
+          echo "Images were published. Configure VPS_HOST, VPS_USER and VPS_SSH_KEY secrets to enable the external deployment step."
