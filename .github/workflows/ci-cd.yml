@@ -36,7 +36,7 @@ jobs:
 
       # Secret scanning is part of the security gate. A finding blocks the pipeline.
       - name: Scan repository for exposed secrets
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
