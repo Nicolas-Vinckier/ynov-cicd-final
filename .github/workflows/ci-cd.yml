@@ -211,7 +211,7 @@ jobs:
 
       - name: Deploy on VPS with Docker Compose
         if: env.VPS_HOST != '' && env.VPS_USER != '' && env.VPS_SSH_KEY != ''
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
