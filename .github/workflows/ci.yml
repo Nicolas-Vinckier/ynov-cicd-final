@@ -171,8 +171,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # On expose les secrets en variables pour pouvoir tester s'ils sont definis.
-      RENDER_HOOK_BACKEND: ${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}
-      RENDER_HOOK_FRONTEND: ${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}
+      RENDER_HOOK_BACKEND: ${{ secrets.RENDER_HOOK_BACKEND }}
+      RENDER_HOOK_FRONTEND: ${{ secrets.RENDER_HOOK_FRONTEND }}
       PROD_BACKEND_URL: ${{ secrets.PROD_BACKEND_URL }}
       PROD_FRONTEND_URL: ${{ secrets.PROD_FRONTEND_URL }}
     steps:
