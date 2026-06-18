@@ -1,9 +1,9 @@
 # Pipeline CI/CD du projet "metrics".
 # 4 stages visibles, dans l'ordre du plan :
+#   Stage 1 — Quality gate          (job:  quality-gate : lint, commitlint, gitleaks)
 #   Stage 2 — Tests & coverage      (jobs: backend, frontend)
 #   Stage 3 — Build & security scan (job:  docker)
 #   Stage 4 — Push & deploy         (jobs: docker [push] + deploy)
-# Le Stage 1 (quality gate : lint / commitlint / scan secrets) sera ajoute ensuite.
 #
 # Regle : sur Pull Request -> tests + build + scan (PAS de push ni de deploy).
 #         sur push vers main -> tout, jusqu'au deploy Render + smoke tests.
@@ -17,10 +17,49 @@ on:
 
 jobs:
   # ===========================================================================
+  # STAGE 1 — Quality gate
+  # Bloque les changements non conformes AVANT les tests lourds :
+  # lint du code, conventions de commit, et detection de secrets.
+  # ===========================================================================
+  quality-gate:
+    name: Quality gate — lint, commits & secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # historique complet (necessaire a gitleaks et commitlint)
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps # necessaire pour ESLint
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint frontend (ESLint)
+        working-directory: frontend
+        run: npx eslint src/
+
+      - name: Validate commit messages (commitlint)
+        if: github.event_name == 'pull_request' # on verifie les commits de la PR
+        uses: wagoid/commitlint-github-action@v6
+
+      - name: Scan for secrets (gitleaks)
+        # Scanne le code et tout l'historique git ; echoue si un secret est trouve.
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" \
+            zricethezav/gitleaks:latest detect --source=/repo --redact --exit-code 1
+
+  # ===========================================================================
   # STAGE 2 — Tests & coverage
   # ===========================================================================
   backend:
     name: Backend — tests & coverage
+    needs: quality-gate # ne tourne qu'apres un quality gate vert
     # Matrice : le job tourne en parallele sur Linux, macOS et Windows
     # pour prouver que le projet fonctionne sur les trois systemes.
     strategy:
@@ -56,6 +95,7 @@ jobs:
 
   frontend:
     name: Frontend — tests & coverage
+    needs: quality-gate # ne tourne qu'apres un quality gate vert
     strategy:
       fail-fast: false
       matrix:
