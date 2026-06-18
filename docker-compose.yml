@@ -39,6 +39,8 @@ services:
     build: ./frontend
     container_name: metrics-frontend
     restart: always
+    environment:
+      PROXY_API_URL: http://backend:5000
     ports:
       - "80:80"
     depends_on:
