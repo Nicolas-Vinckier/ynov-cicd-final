@@ -1,0 +1,212 @@
+# Pipeline CI/CD du projet "metrics".
+# 4 stages visibles, dans l'ordre du plan :
+#   Stage 2 — Tests & coverage      (jobs: backend, frontend)
+#   Stage 3 — Build & security scan (job:  docker)
+#   Stage 4 — Push & deploy         (jobs: docker [push] + deploy)
+# Le Stage 1 (quality gate : lint / commitlint / scan secrets) sera ajoute ensuite.
+#
+# Regle : sur Pull Request -> tests + build + scan (PAS de push ni de deploy).
+#         sur push vers main -> tout, jusqu'au deploy Render + smoke tests.
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ===========================================================================
+  # STAGE 2 — Tests & coverage
+  # ===========================================================================
+  backend:
+    name: Backend — tests & coverage
+    # Matrice : le job tourne en parallele sur Linux, macOS et Windows
+    # pour prouver que le projet fonctionne sur les trois systemes.
+    strategy:
+      fail-fast: false # un OS qui echoue n'annule pas les autres
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4 # recupere le code du repo
+
+      - name: Setup Node
+        uses: actions/setup-node@v4 # installe Node.js 20 et npm, et active le cache npm
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies # installe les dependances du backend
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm test -- --coverage # tests du backend + rapport de couverture
+
+      - name: Upload coverage report
+        if: always() # upload meme si les tests echouent (pour debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-${{ matrix.os }} # nom unique par OS (sinon collision)
+          path: backend/coverage
+
+  frontend:
+    name: Frontend — tests & coverage
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        # CI=true rend les tests non-interactifs (react-scripts)
+        env:
+          CI: true
+        run: npm test -- --coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-${{ matrix.os }}
+          path: frontend/coverage
+
+  # ===========================================================================
+  # STAGE 3 & 4 (partie images) — Build, scan Trivy, puis push vers GHCR
+  # ===========================================================================
+  docker:
+    name: Build, scan & push (${{ matrix.service }})
+    needs: [backend, frontend] # ne build qu'apres des tests verts
+    runs-on: ubuntu-latest # le build Docker se fait uniquement sur Linux
+    permissions:
+      contents: read
+      packages: write # autorise le push vers GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, frontend] # une image par service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3 # builder Docker avance (cache, etc.)
+
+      - name: Define image metadata
+        id: meta
+        uses: docker/metadata-action@v5 # genere les noms/tags d'image (et met le nom en minuscules)
+        with:
+          images: ghcr.io/${{ github.repository }}-${{ matrix.service }}
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build image (for scan)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          load: true # charge l'image en local pour pouvoir la scanner
+          push: false # on ne pousse pas encore : on scanne d'abord
+          tags: ${{ matrix.service }}:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master # scan de vulnerabilites (supply chain)
+        with:
+          image-ref: ${{ matrix.service }}:scan
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true # ignore les vulns sans correctif disponible
+          exit-code: '0' # informatif pour l'instant ; passer a '1' pour bloquer sur vulns critiques
+
+      # --- A partir d'ici : uniquement sur push vers main (pas sur les PR) ---
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }} # token automatique, aucun secret a creer
+
+      - name: Push image to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }} # tags :sha et :latest
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha # reutilise le cache du build precedent (rapide)
+          cache-to: type=gha,mode=max
+
+  # ===========================================================================
+  # STAGE 4 (partie deploy) — Deploy Render + smoke tests
+  # Ne s'execute que sur push vers main, apres que les images sont poussees.
+  # Les etapes Render/smoke se SAUTENT tant que les secrets ne sont pas definis
+  # -> la pipeline reste verte avant que Render soit configure.
+  # ===========================================================================
+  deploy:
+    name: Deploy to Render & smoke tests
+    needs: docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      # On expose les secrets en variables pour pouvoir tester s'ils sont definis.
+      RENDER_HOOK_BACKEND: ${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}
+      RENDER_HOOK_FRONTEND: ${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}
+      PROD_BACKEND_URL: ${{ secrets.PROD_BACKEND_URL }}
+      PROD_FRONTEND_URL: ${{ secrets.PROD_FRONTEND_URL }}
+    steps:
+      - name: Trigger Render deploy — backend
+        if: env.RENDER_HOOK_BACKEND != '' # saute si le secret n'existe pas encore
+        run: curl -fsSL -X POST "$RENDER_HOOK_BACKEND"
+
+      - name: Trigger Render deploy — frontend
+        if: env.RENDER_HOOK_FRONTEND != ''
+        run: curl -fsSL -X POST "$RENDER_HOOK_FRONTEND"
+
+      - name: Wait for Render to redeploy
+        if: env.PROD_BACKEND_URL != '' || env.PROD_FRONTEND_URL != ''
+        run: sleep 60 # laisse a Render le temps de redeployer avant les smoke tests
+
+      - name: Smoke test — backend
+        if: env.PROD_BACKEND_URL != ''
+        # Reessaie quelques fois : un service Render gratuit peut etre en cold start.
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$PROD_BACKEND_URL/api/metrics"; then
+              echo "Backend OK"; exit 0
+            fi
+            echo "Tentative $i echouee, nouvelle tentative dans 15s..."; sleep 15
+          done
+          echo "Backend injoignable"; exit 1
+
+      - name: Smoke test — frontend
+        if: env.PROD_FRONTEND_URL != ''
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$PROD_FRONTEND_URL"; then
+              echo "Frontend OK"; exit 0
+            fi
+            echo "Tentative $i echouee, nouvelle tentative dans 15s..."; sleep 15
+          done
+          echo "Frontend injoignable"; exit 1
