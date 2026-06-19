@@ -4,7 +4,11 @@ const { pool } = require('./db');
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+  : '*';
+
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 app.get('/api/metrics', async (req, res) => {

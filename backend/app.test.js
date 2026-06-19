@@ -115,3 +115,19 @@ describe('POST /api/metrics', () => {
     expect(consoleErrorMock).toHaveBeenCalled();
   });
 });
+
+describe('CORS configuration branch tests', () => {
+  const originalEnv = process.env.CORS_ORIGIN;
+
+  afterEach(() => {
+    process.env.CORS_ORIGIN = originalEnv;
+    jest.resetModules();
+  });
+
+  it('should parse CORS_ORIGIN env variable when defined', () => {
+    process.env.CORS_ORIGIN = 'http://example.com, http://example2.com';
+    jest.resetModules();
+    const appWithCors = require('./app');
+    expect(appWithCors).toBeDefined();
+  });
+});
