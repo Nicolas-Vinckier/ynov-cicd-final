@@ -217,7 +217,7 @@ jobs:
       PROD_FRONTEND_URL: ${{ secrets.PROD_FRONTEND_URL }}
     steps:
       - name: Trigger Render deploy — backend
-        if: env.RENDER_HOOK_BACKEND != '' # saute si le secret n'existe pas encore
+        if: env.RENDER_HOOK_BACKEND != '' # saute si le secret nexiste pas encore
         run: curl -fsSL -X POST "$RENDER_HOOK_BACKEND"
 
       - name: Trigger Render deploy — frontend
@@ -226,7 +226,7 @@ jobs:
 
       - name: Wait for Render to redeploy
         if: env.PROD_BACKEND_URL != '' || env.PROD_FRONTEND_URL != ''
-        run: sleep 60 # laisse a Render le temps de redeployer avant les smoke tests
+        run: sleep 30 # laisse a Render le temps de redeployer avant les smoke tests
 
       - name: Smoke test — backend
         if: env.PROD_BACKEND_URL != ''
@@ -250,3 +250,6 @@ jobs:
             echo "Tentative $i echouee, nouvelle tentative dans 15s..."; sleep 15
           done
           echo "Frontend injoignable"; exit 1
+
+
+
