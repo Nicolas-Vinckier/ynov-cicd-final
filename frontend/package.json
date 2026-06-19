@@ -36,6 +36,10 @@
     ]
   },
   "jest": {
+    "coveragePathIgnorePatterns": [
+      "src/index.js",
+      "src/setupTests.js"
+    ],
     "coverageThreshold": {
       "./src/**/*.js": {
         "branches": 95,
