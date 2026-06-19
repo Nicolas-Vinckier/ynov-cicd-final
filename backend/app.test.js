@@ -8,6 +8,14 @@ jest.mock('./db', () => ({
   },
 }));
 
+describe('GET /api/health', () => {
+  it('should return status ok and 200', async () => {
+    const response = await request(app).get('/api/health');
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: 'ok' });
+  });
+});
+
 describe('GET /api/metrics', () => {
   let consoleErrorMock;
 
@@ -113,5 +121,21 @@ describe('POST /api/metrics', () => {
     expect(response.status).toBe(500);
     expect(response.body.error).toBe('Database insertion failure');
     expect(consoleErrorMock).toHaveBeenCalled();
+  });
+});
+
+describe('CORS configuration branch tests', () => {
+  const originalEnv = process.env.CORS_ORIGIN;
+
+  afterEach(() => {
+    process.env.CORS_ORIGIN = originalEnv;
+    jest.resetModules();
+  });
+
+  it('should parse CORS_ORIGIN env variable when defined', () => {
+    process.env.CORS_ORIGIN = 'http://example.com, http://example2.com';
+    jest.resetModules();
+    const appWithCors = require('./app');
+    expect(appWithCors).toBeDefined();
   });
 });

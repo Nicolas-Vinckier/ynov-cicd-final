@@ -1,3 +1,5 @@
+// Note: Ce fichier de bootstrap lance le serveur HTTP et effectue la connexion DB.
+// Il est exclu de la couverture Jest (collectCoverageFrom) car il est difficile à tester unitairement sans effets de bord.
 const app = require('./app');
 const { initDb } = require('./db');
 
