@@ -245,4 +245,44 @@ describe('App Component', () => {
 
     expect(screen.getByText('Erreur lors du nettoyage de la base')).toBeInTheDocument();
   });
+
+  it('correctly toggles the light and dark theme and persists it', async () => {
+    window.localStorage.clear();
+    await renderAppWithMetrics([]);
+
+    const toggleButton = screen.getByLabelText('Changer le thème');
+    
+    // Default is dark theme
+    expect(document.body.classList.contains('light-theme')).toBe(false);
+    expect(window.localStorage.getItem('theme')).toBe('dark');
+
+    // Switch to light theme
+    await act(async () => {
+      fireEvent.click(toggleButton);
+    });
+    expect(document.body.classList.contains('light-theme')).toBe(true);
+    expect(window.localStorage.getItem('theme')).toBe('light');
+
+    // Switch back to dark theme
+    await act(async () => {
+      fireEvent.click(toggleButton);
+    });
+    expect(document.body.classList.contains('light-theme')).toBe(false);
+    expect(window.localStorage.getItem('theme')).toBe('dark');
+  });
+
+  it('initializes with light theme if stored in localStorage', async () => {
+    window.localStorage.setItem('theme', 'light');
+    
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [],
+    });
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    expect(document.body.classList.contains('light-theme')).toBe(true);
+  });
 });
