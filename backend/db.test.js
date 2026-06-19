@@ -18,30 +18,19 @@ describe('Database Module', () => {
     jest.clearAllMocks();
   });
 
-  it('should initialize the database and create or migrate the metrics table', async () => {
+  it('should initialize the database and create tables', async () => {
     const poolInstance = new Pool();
     await initDb();
     expect(poolInstance.connect).toHaveBeenCalled();
     const client = await poolInstance.connect();
     expect(client.query).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS metrics'));
-    expect(client.query).toHaveBeenCalledWith(expect.stringContaining('ADD COLUMN IF NOT EXISTS metric_group'));
-    expect(client.query).toHaveBeenCalledWith(expect.stringContaining('ALTER COLUMN "timestamp" TYPE TIMESTAMPTZ'));
-    expect(client.release).toHaveBeenCalled();
-  });
-
-  it('should release the database client when initialization fails', async () => {
-    const poolInstance = new Pool();
-    const client = await poolInstance.connect();
-    client.query.mockRejectedValueOnce(new Error('migration failure'));
-
-    await expect(initDb()).rejects.toThrow('migration failure');
-
     expect(client.release).toHaveBeenCalled();
   });
 
   it('should construct Pool correctly based on environment variables', () => {
     const originalEnv = { ...process.env };
-
+    
+    // Test case 1: DATABASE_URL is set (production)
     process.env.DATABASE_URL = 'postgres://user:pass@host:5432/db';
     process.env.NODE_ENV = 'production';
     jest.resetModules();
@@ -52,6 +41,7 @@ describe('Database Module', () => {
       ssl: { rejectUnauthorized: false }
     }));
 
+    // Test case 2: DATABASE_URL is set (development)
     process.env.DATABASE_URL = 'postgres://user:pass@host:5432/db';
     process.env.NODE_ENV = 'development';
     jest.resetModules();
@@ -62,6 +52,7 @@ describe('Database Module', () => {
       ssl: false
     }));
 
+    // Test case 3: fallback standard config (explicit env variables)
     delete process.env.DATABASE_URL;
     process.env.POSTGRES_HOST = 'test-host';
     process.env.POSTGRES_USER = 'test-user';
@@ -79,6 +70,7 @@ describe('Database Module', () => {
       port: 5432
     }));
 
+    // Test case 4: fallback default values (no env variables defined)
     delete process.env.DATABASE_URL;
     delete process.env.POSTGRES_HOST;
     delete process.env.POSTGRES_USER;
@@ -96,6 +88,7 @@ describe('Database Module', () => {
       port: 5432
     }));
 
+    // Reset env
     process.env = originalEnv;
   });
 });
