@@ -95,3 +95,4 @@ Envoyez les images créées vers le registre GitHub Container Registry :
 ## 🤖 Automatisation CI/CD (Optionnel)
 
 Pour automatiser la mise à jour des packages GHCR à chaque `push` ou `pull request` sur la branche `main`, vous pouvez configurer un workflow GitHub Actions sous `.github/workflows/deploy.yml` utilisant `docker/metadata-action` et `docker/build-push-action`.
+
