@@ -8,6 +8,14 @@ jest.mock('./db', () => ({
   },
 }));
 
+describe('GET /api/health', () => {
+  it('should return status ok and 200', async () => {
+    const response = await request(app).get('/api/health');
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: 'ok' });
+  });
+});
+
 describe('GET /api/metrics', () => {
   let consoleErrorMock;
 

@@ -11,6 +11,10 @@ const allowedOrigins = process.env.CORS_ORIGIN
 app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 app.get('/api/metrics', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM metrics ORDER BY id DESC');
