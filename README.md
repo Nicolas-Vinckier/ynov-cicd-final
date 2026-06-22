@@ -56,6 +56,7 @@ graph TD
 ├── .github/
 │   ├── pull_request_template.md
 │   └── workflows/
+│       ├── ci.yml
 │       ├── pull_request.yml
 │       └── merge.yml
 ├── backend/
