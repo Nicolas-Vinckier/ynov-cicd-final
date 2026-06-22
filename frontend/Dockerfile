@@ -14,6 +14,8 @@ RUN npm run build
 # Stage 2: Serve using Nginx
 FROM nginx:alpine
 
+RUN apk update && apk upgrade --no-cache
+
 COPY --from=build /usr/src/app/build /usr/share/nginx/html
 
 COPY nginx.conf /etc/nginx/templates/default.conf.template
