@@ -5,8 +5,12 @@ on:
     branches: [main]
 
 jobs:
+  # ===========================================================================
+  # STAGE 1 — Quality gate
+  # ===========================================================================
   quality-gate:
     uses: ./.github/workflows/ci.yml
+
   # ===========================================================================
   # STAGE 2 — Tests & coverage
   # ===========================================================================
@@ -84,7 +88,7 @@ jobs:
   # STAGE 3 — Build & security scan (PAS de push ni de deploy)
   # ===========================================================================
   docker:
-    name: Build & scan (${{ matrix.service }})
+    name: Build & Scan (${{ matrix.service }})
     needs: [backend, frontend]
     runs-on: ubuntu-latest
     strategy:
