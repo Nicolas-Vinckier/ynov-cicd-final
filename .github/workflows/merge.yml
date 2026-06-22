@@ -128,14 +128,14 @@ jobs:
   push-ghcr:
     name: Build & push (${{ matrix.service }})
     needs: docker-build-scan
-    runs-on: ubuntu-latest 
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write 
+      packages: write
     strategy:
       fail-fast: false
       matrix:
-        service: [backend, frontend] 
+        service: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
 
