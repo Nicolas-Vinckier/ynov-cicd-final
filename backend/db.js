@@ -24,8 +24,34 @@ const initDb = async () => {
       CREATE TABLE IF NOT EXISTS metrics (
         id SERIAL PRIMARY KEY,
         value DOUBLE PRECISION NOT NULL,
-        timestamp VARCHAR(50) NOT NULL
+        "timestamp" TIMESTAMPTZ NOT NULL,
+        metric_group VARCHAR(80) NOT NULL DEFAULT 'general'
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE metrics
+      ADD COLUMN IF NOT EXISTS metric_group VARCHAR(80) NOT NULL DEFAULT 'general';
+    `);
+
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_name = 'metrics'
+            AND column_name = 'timestamp'
+            AND data_type <> 'timestamp with time zone'
+        ) THEN
+          ALTER TABLE metrics
+          ALTER COLUMN "timestamp" TYPE TIMESTAMPTZ
+          USING CASE
+            WHEN "timestamp" ~ '^\\d{4}-\\d{2}-\\d{2}' THEN "timestamp"::timestamptz
+            ELSE NOW()
+          END;
+        END IF;
+      END $$;
     `);
   } finally {
     client.release();

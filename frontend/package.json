@@ -10,12 +10,15 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.5",
     "@testing-library/react": "^15.0.7",
-    "@testing-library/user-event": "^14.5.2"
+    "@testing-library/user-event": "^14.5.2",
+    "eslint": "^8.57.1",
+    "eslint-config-react-app": "^7.0.1"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test --watchAll=false --env=jsdom --coverage",
+    "lint": "eslint src/",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

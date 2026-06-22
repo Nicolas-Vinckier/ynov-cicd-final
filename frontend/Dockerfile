@@ -1,5 +1,7 @@
 # Stage 1: Build React static bundle
-FROM node:18-alpine AS build
+FROM node:22-alpine AS build
+
+RUN apk update && apk upgrade --no-cache
 
 WORKDIR /usr/src/app
 
