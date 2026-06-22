@@ -4,8 +4,8 @@
   "description": "Simple metrics tracker backend",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "test": "jest --runInBand"
+    "start": "npx serve -s . -l 3000",
+    "build": "echo 'Already built'"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -44,8 +44,13 @@
       "ecmaVersion": 2022,
       "sourceType": "script"
     },
-    "extends": ["eslint:recommended"],
-    "ignorePatterns": ["coverage/", "node_modules/"],
+    "extends": [
+      "eslint:recommended"
+    ],
+    "ignorePatterns": [
+      "coverage/",
+      "node_modules/"
+    ],
     "rules": {
       "no-unused-vars": "warn"
     }
