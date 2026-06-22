@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   # ===========================================================================
   # STAGE 1 — Quality gate
@@ -18,6 +22,7 @@ jobs:
     name: Backend — tests & coverage
     needs: quality-gate
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: backend
@@ -29,7 +34,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
@@ -41,7 +46,7 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: backend-coverage
           path: backend/coverage
@@ -50,6 +55,7 @@ jobs:
     name: Frontend — tests & coverage
     needs: quality-gate
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: frontend
@@ -61,7 +67,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -75,7 +81,7 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-coverage
           path: frontend/coverage
@@ -87,9 +93,14 @@ jobs:
     name: Build, Scan & Push (${{ matrix.service }})
     needs: [backend-tests, frontend-tests]
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       packages: write
+
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
     strategy:
       fail-fast: false
@@ -99,6 +110,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Login to Docker Hub
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v4
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -117,7 +135,7 @@ jobs:
             type=raw,value=latest
 
       # =========================================================================
-      # BUILD + LOAD POUR SCAN LOCAL
+      # BUILD + LOAD FOR LOCAL SCAN
       # =========================================================================
       - name: Build image for scan
         uses: docker/build-push-action@v7

@@ -3,65 +3,120 @@ name: CI
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   # ===========================================================================
-  # STAGE 1 — Quality gate (Parallélisée)
+  # STAGE 1 — Quality gate (parallelized)
   # ===========================================================================
-
   lint-frontend:
     name: Lint Frontend
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend deps
+      - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Lint frontend (ESLint)
+      - name: Lint frontend
         working-directory: frontend
         run: npm run lint
 
   lint-backend:
     name: Lint Backend
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
-      - name: Install backend deps
+      - name: Install backend dependencies
         working-directory: backend
         run: npm ci
 
-      - name: Lint backend (ESLint)
+      - name: Lint backend
         working-directory: backend
         run: npx eslint .
 
   security-and-commits:
     name: Commits & Secrets Scan
     runs-on: ubuntu-latest
+
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PUSH_BEFORE_SHA: ${{ github.event.before }}
+      CURRENT_SHA: ${{ github.sha }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Validate commit messages (commitlint)
-        uses: wagoid/commitlint-github-action@v6
+      - name: Setup Node for commitlint
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
 
-      - name: Scan for secrets (gitleaks)
+      - name: Install commitlint
         run: |
-          docker run --rm -v "${{ github.workspace }}:/repo" \
-            zricethezav/gitleaks:latest detect --source=/repo --redact --exit-code 1
+          set -euo pipefail
+          mkdir -p .ci/commitlint
+          cp commitlint.config.cjs .ci/commitlint/commitlint.config.cjs
+          cd .ci/commitlint
+          npm init -y >/dev/null
+          npm install --save-dev @commitlint/cli@19 @commitlint/config-conventional@19
+
+      - name: Validate commit messages
+        run: |
+          set -euo pipefail
+
+          if [ -n "${PR_BASE_SHA}" ] && [ -n "${PR_HEAD_SHA}" ]; then
+            FROM="${PR_BASE_SHA}"
+            TO="${PR_HEAD_SHA}"
+          else
+            FROM="${PUSH_BEFORE_SHA}"
+            TO="${CURRENT_SHA}"
+          fi
+
+          if [ -z "${FROM}" ] || [ "${FROM}" = "0000000000000000000000000000000000000000" ]; then
+            FROM="$(git rev-list --max-parents=0 "${TO}")"
+          fi
+
+          npx --prefix .ci/commitlint commitlint \
+            --config .ci/commitlint/commitlint.config.cjs \
+            --from "${FROM}" \
+            --to "${TO}" \
+            --verbose
+
+      - name: Install Gitleaks
+        run: |
+          set -euo pipefail
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          rm -f gitleaks.tar.gz
+
+      - name: Scan for secrets
+        run: gitleaks detect --source=. --redact --exit-code 1
