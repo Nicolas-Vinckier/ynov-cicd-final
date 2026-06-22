@@ -6,8 +6,7 @@ on:
 
 jobs:
   quality-gate:
-      uses: ./.github/workflows/ci.yml
-
+    uses: ./.github/workflows/ci.yml
   # ===========================================================================
   # STAGE 2 — Tests & coverage
   # ===========================================================================
