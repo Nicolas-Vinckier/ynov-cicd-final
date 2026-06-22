@@ -16,6 +16,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test --watchAll=false --env=jsdom --coverage",
+    "lint": "eslint src/",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
