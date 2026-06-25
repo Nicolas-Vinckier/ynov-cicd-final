@@ -478,43 +478,7 @@ Cette option permet de revenir rapidement à une version déjà validée par la 
 
 ---
 
-## 14. Preuves à présenter en soutenance
-
-Préparer les éléments suivants avant la démonstration :
-
-| Preuve                   | Élément attendu                                                               |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| Pull Request verte       | Checks PR au vert avec quality gate, tests, coverage, build et scan.          |
-| Pipeline `main` complète | Exécution GitHub Actions après merge avec les 4 stages visibles.              |
-| Artefacts coverage       | Rapports backend et frontend accessibles dans GitHub Actions.                 |
-| Logs Gitleaks            | Scan terminé sans secret détecté.                                             |
-| Logs Trivy               | Images backend et frontend scannées sans vulnérabilité bloquante.             |
-| GHCR                     | Images publiées avec tags `latest` et `sha`.                                  |
-| Render backend           | URL publique backend et réponse de `/api/health`.                             |
-| Render frontend          | URL publique frontend accessible.                                             |
-| Secrets                  | Capture montrant les noms de secrets GitHub/Render sans afficher les valeurs. |
-| Rollback                 | Procédure documentée et explicable rapidement.                                |
-
----
-
-## 15. Scénario de démonstration conseillé
-
-1. Ouvrir GitHub Actions, une Pull Request de démonstration, GHCR et Render.
-2. Faire une petite modification documentaire sur une branche dédiée.
-3. Ouvrir une Pull Request vers `main`.
-4. Montrer le déclenchement automatique du workflow Pull Request CI.
-5. Présenter les stages : quality gate, tests/coverage, build/scan.
-6. Merger vers `main` lorsque la PR est verte.
-7. Montrer le workflow Merge CD : push GHCR, deploy Render, smoke tests.
-8. Ouvrir l'URL publique frontend.
-9. Ouvrir l'URL backend `/api/health`.
-10. Montrer les images GHCR avec les tags générés.
-
-Prévoir une exécution réussie récente ouverte dans un onglet comme plan de secours.
-
----
-
-## 16. Dépannage rapide
+## 14. Dépannage rapide
 
 ### Trivy échoue sur l'image backend ou frontend
 
@@ -555,7 +519,7 @@ Vérifier :
 
 ---
 
-## 17. Commandes utiles
+## 15. Commandes utiles
 
 ```bash
 # Voir les fichiers suivis qui ne devraient pas l'être
@@ -580,7 +544,7 @@ docker build -t metrics-frontend:local ./frontend
 
 ---
 
-## 18. État attendu avant rendu
+## 16. État attendu avant rendu
 
 Le projet est prêt pour l'évaluation lorsque :
 
