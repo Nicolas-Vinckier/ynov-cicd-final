@@ -19,10 +19,10 @@ graph TD
     GitHub -->|push sur main| MainCD[GitHub Actions - Merge CD]
 
     subgraph CI[Pipeline CI/CD]
-        QG[Stage 1 - Quality gate\nESLint, commitlint, Gitleaks]
-        TEST[Stage 2 - Tests et coverage\nBackend + Frontend]
-        BUILD[Stage 3 - Build et security scan\nDocker + Trivy]
-        DEPLOY[Stage 4 - Push et deploy\nGHCR + Render + smoke tests]
+        QG[Stage 1 - Quality gate<br/>ESLint, commitlint, Gitleaks]
+        TEST[Stage 2 - Tests et coverage<br/>Backend + Frontend]
+        BUILD[Stage 3 - Build et security scan<br/>Docker + Trivy]
+        DEPLOY[Stage 4 - Push et deploy<br/>GHCR + Render + smoke tests]
     end
 
     PRCI --> QG --> TEST --> BUILD
@@ -37,15 +37,34 @@ graph TD
 
 ### Choix techniques
 
-| Bloc                  | Choix                           | Justification                                                                                             |
-| --------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Gestion de code       | GitHub                          | Dépôt centralisé, Pull Requests, protection de branche et historique de commits.                          |
-| CI/CD                 | GitHub Actions                  | Intégration native avec GitHub, workflows déclaratifs en YAML, déclenchement automatique sur PR et merge. |
-| Registry Docker       | GitHub Container Registry       | Registry lié au dépôt, traçabilité des images par tags `sha` et `latest`.                                 |
-| Hébergement           | Render                          | Environnement externe, compatible Docker, déploiement par deploy hook.                                    |
-| Base de données       | PostgreSQL Render ou équivalent | Base externe séparée du poste local et des conteneurs applicatifs.                                        |
-| Sécurité              | Gitleaks + Trivy                | Détection de secrets dans le dépôt et scan de vulnérabilités sur les images Docker.                       |
-| Validation production | Smoke tests HTTP                | Vérification automatique que le backend et le frontend répondent après déploiement.                       |
+| Bloc                  | Choix                           | Justification                                                                                                           |
+| --------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Gestion de code       | GitHub                          | Dépôt centralisé, Pull Requests, protection de branche et historique de commits.                                        |
+| CI/CD                 | GitHub Actions                  | Intégration native avec GitHub, workflows déclaratifs en YAML, déclenchement automatique sur PR et merge.               |
+| Tests multi-OS        | Matrice GitHub Actions          | Exécution des tests sur Ubuntu, macOS et Windows pour garantir l'indépendance de l'application à un seul environnement. |
+| Registry Docker       | GitHub Container Registry       | Registry lié au dépôt, traçabilité des images par tags `sha` et `latest`.                                               |
+| Hébergement           | Render                          | Environnement externe, compatible Docker, déploiement par deploy hook.                                                  |
+| Base de données       | PostgreSQL Render ou équivalent | Base externe séparée du poste local et des conteneurs applicatifs.                                                      |
+| Sécurité              | Gitleaks + Trivy                | Détection de secrets dans le dépôt et scan de vulnérabilités sur les images Docker.                                     |
+| Validation production | Smoke tests HTTP                | Vérification automatique que le backend et le frontend répondent après déploiement.                                     |
+
+### Choix écartés
+
+Une pipeline complète n'implique pas d'empiler tous les outils existants, mais
+de rester proportionnée au besoin réel de l'application.
+
+- **Kubernetes (Minikube / K3s)** : écarté. L'application ne comporte que deux
+  services applicatifs déployés sur Render. Un orchestrateur de conteneurs
+  ajouterait une forte complexité opérationnelle (cluster, manifests, gestion
+  réseau) sans bénéfice réel à cette échelle.
+- **Terraform / IaC** : écarté pour la même raison. La configuration Render est
+  minimale et stable ; provisionner l'infrastructure via Terraform n'apporterait
+  pas de valeur face au coût de maintenance pour ce périmètre.
+- **Jenkins / GitLab CI** : écartés au profit de GitHub Actions, déjà intégré au
+  dépôt, sans serveur à héberger ni à maintenir.
+
+Ces outils pourraient devenir pertinents si l'application montait en charge ou
+multipliait les services ; ce n'est pas le cas ici.
 
 ---
 
@@ -85,7 +104,7 @@ graph TD
 
 ### Prérequis
 
-- Node.js 20 ou version compatible avec le projet ;
+- Node.js 22 ou version compatible avec le projet ;
 - npm ;
 - Docker ;
 - Docker Compose.
@@ -152,7 +171,7 @@ npm test -- --coverage
 npx eslint .
 ```
 
-Le backend utilise Jest, Supertest et ESLint. La couverture est configurée dans `backend/package.json` avec un seuil minimal de 95 %.
+Le backend utilise Jest, Supertest et ESLint. La couverture est configurée dans `backend/package.json` avec un seuil minimal de 95 %, largement dépassé : la couverture actuelle est de **100 %** (statements, branches, functions, lines) sur **24 tests**.
 
 ### Frontend
 
@@ -163,7 +182,7 @@ CI=true npm test -- --coverage
 npx eslint src/
 ```
 
-Le frontend utilise React Testing Library et la configuration ESLint fournie par React.
+Le frontend utilise React Testing Library et la configuration ESLint fournie par React. La couverture actuelle est de **100 %** (statements, branches, functions, lines) sur **14 tests**.
 
 ### Build Docker local
 
@@ -223,6 +242,10 @@ Le projet contient deux workflows GitHub Actions.
 | `.github/workflows/pull_request.yml` | Pull Request vers `main` | Valider la qualité, les tests, le coverage, le build Docker et le scan sécurité avant merge.               |
 | `.github/workflows/merge.yml`        | Push sur `main`          | Rejouer la validation, publier les images Docker dans GHCR, déclencher Render et exécuter les smoke tests. |
 
+Le Stage 1 est mutualisé entre les deux workflows via un workflow réutilisable
+(`.github/workflows/ci.yml` appelé par `workflow_call`), ce qui évite toute
+duplication de configuration.
+
 ### Stage 1 - Quality gate
 
 Objectif : bloquer les changements non conformes avant les étapes longues.
@@ -251,7 +274,10 @@ Objectif : vérifier automatiquement le comportement du backend et du frontend.
 - lancement des tests frontend avec coverage ;
 - publication de l'artefact `frontend/coverage`.
 
-Les tests sont exécutés sur plusieurs systèmes : Ubuntu, macOS et Windows.
+Les tests sont exécutés en parallèle sur une matrice de trois systèmes :
+Ubuntu, macOS et Windows. Cette matrice garantit que les tests et l'application
+ne dépendent pas d'un environnement unique. L'option `fail-fast: false` permet
+de voir tous les échecs plutôt que de s'arrêter au premier.
 
 Condition de passage : tests verts et seuils de couverture respectés.
 
@@ -267,6 +293,9 @@ Objectif : garantir que les images Docker sont constructibles et suffisamment pr
 - scan des images avec Trivy.
 
 La pipeline échoue si Trivy détecte une vulnérabilité `HIGH` ou `CRITICAL` non ignorée par la stratégie du workflow.
+
+En Pull Request, ce stage s'arrête après le build et le scan : aucune image
+n'est poussée. Le push n'a lieu qu'au merge sur `main`.
 
 ### Stage 4 - Push et deploy
 
