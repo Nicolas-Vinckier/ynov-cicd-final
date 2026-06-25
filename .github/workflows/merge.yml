@@ -204,7 +204,7 @@ jobs:
         run: curl -fsSL -X POST "$RENDER_HOOK_FRONTEND"
 
       - name: Wait deploy
-        run: sleep 30
+        run: sleep 5
 
       - name: Smoke test backend
         if: env.PROD_BACKEND_URL != ''
